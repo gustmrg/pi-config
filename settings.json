@@ -6,8 +6,6 @@
   "defaultThinkingLevel": "medium",
   "packages": [
     "npm:pi-mcp-adapter",
-    "npm:@ff-labs/pi-fff",
-    "npm:pi-subagents",
-    "npm:pi-intercom"
+    "npm:@ff-labs/pi-fff"
   ]
 }

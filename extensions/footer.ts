@@ -22,6 +22,12 @@ const NERD_FONT_ENABLED = useNerdFont();
 const THINKING_GLYPH = NERD_FONT_ENABLED ? "" : "~";
 const BOT_GLYPH = NERD_FONT_ENABLED ? "󰚩" : "";
 
+const SPEED_GLYPH = NERD_FONT_ENABLED ? "" : "⚡";
+
+// Rough characters-per-token estimate used only before a provider reports real
+// output usage for the in-flight message.
+const CHARS_PER_TOKEN = 4;
+
 type Runtime = { name: string; command?: string; args?: string[]; pattern?: RegExp; files: string[] };
 type RuntimeInfo = { name: string; version?: string };
 type UsageTotals = { input: number; output: number; cacheRead: number; cacheWrite: number; cost: number; cacheHit?: number };
@@ -131,6 +137,10 @@ export default function footerExtension(pi: ExtensionAPI) {
 	let runtime: RuntimeInfo | undefined;
 	let workingSince: number | undefined;
 	let lastDoneIn: number | undefined;
+	let streamStart: number | undefined;
+	let streamReportedTokens = 0;
+	let streamEstimatedTokens = 0;
+	let tokensPerSecond: number | undefined;
 	let timer: ReturnType<typeof setInterval> | undefined;
 	let requestRender: (() => void) | undefined;
 
@@ -175,6 +185,12 @@ export default function footerExtension(pi: ExtensionAPI) {
 					if (effort !== "off") modelParts.push(theme.fg(effortColor(effort), `${THINKING_GLYPH} ${effort}`));
 					const totals = usageTotals(ctx);
 					const stats = [theme.fg("accent", `↑ ${fmtTokens(totals.input)}`), theme.fg("success", `↓ ${fmtTokens(totals.output)}`)];
+					const streaming = workingSince !== undefined;
+					if (streaming && tokensPerSecond !== undefined && Number.isFinite(tokensPerSecond) && tokensPerSecond > 0) {
+						stats.push(theme.fg("accent", `${SPEED_GLYPH} ${tokensPerSecond.toFixed(1)} tok/s`));
+					} else {
+						stats.push(theme.fg("dim", `${SPEED_GLYPH} -- tok/s`));
+					}
 					if ((totals.cacheRead > 0 || totals.cacheWrite > 0) && totals.cacheHit !== undefined) stats.push(theme.fg("muted", `cache ${totals.cacheHit.toFixed(1)}%`));
 					stats.push(theme.fg("warning", `$${totals.cost.toFixed(3)}`));
 					const separator = theme.fg("dim", " · ");
@@ -192,9 +208,42 @@ export default function footerExtension(pi: ExtensionAPI) {
 		requestRender?.();
 	});
 
+	pi.on("message_start", (event) => {
+		if (event.message.role !== "assistant") return;
+		streamStart = Date.now();
+		streamReportedTokens = 0;
+		streamEstimatedTokens = 0;
+	});
+
+	pi.on("message_update", (event) => {
+		if (event.message.role !== "assistant") return;
+		if (streamStart === undefined) streamStart = Date.now();
+		const update = event.assistantMessageEvent;
+		if (update.type === "text_delta" || update.type === "thinking_delta" || update.type === "toolcall_delta") {
+			streamEstimatedTokens += update.delta.length / CHARS_PER_TOKEN;
+		}
+		const reported = event.message.usage?.output ?? 0;
+		if (reported > streamReportedTokens) streamReportedTokens = reported;
+		// Prefer real provider usage; fall back to a character estimate while streaming.
+		const tokens = streamReportedTokens > 0 ? streamReportedTokens : streamEstimatedTokens;
+		const elapsed = (Date.now() - streamStart) / 1_000;
+		if (tokens > 0 && elapsed > 0) tokensPerSecond = tokens / elapsed;
+	});
+
+	pi.on("message_end", (event) => {
+		if (event.message.role !== "assistant") return;
+		const output = event.message.usage?.output ?? 0;
+		if (streamStart !== undefined) {
+			const elapsed = (Date.now() - streamStart) / 1_000;
+			if (output > 0 && elapsed > 0) tokensPerSecond = output / elapsed;
+		}
+		streamStart = undefined;
+	});
+
 	pi.on("agent_start", () => {
 		workingSince = Date.now();
 		lastDoneIn = undefined;
+		tokensPerSecond = undefined;
 		stopTimer();
 		timer = setInterval(() => requestRender?.(), 250);
 		timer.unref?.();
