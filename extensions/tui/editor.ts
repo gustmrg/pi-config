@@ -40,6 +40,18 @@ const CURSOR_STYLE_SEQUENCES: Partial<Record<CursorStyle, string>> = {
 };
 const DEFAULT_CURSOR_STYLE_SEQUENCE = "\x1b[0 q";
 
+/**
+ * Prefer the Unicode prompt glyph, but keep the classic ASCII prompt for
+ * terminals/locales that explicitly advertise limited character support.
+ * The built-in editor also remains a `>` fallback if this extension is not
+ * loaded at all.
+ */
+function getPromptSymbol(): string {
+	const locale = `${process.env.LC_ALL ?? process.env.LC_CTYPE ?? process.env.LANG ?? ""}`.toLowerCase();
+	const limitedTerminal = process.env.TERM === "dumb" || locale === "c" || locale === "posix" || locale.includes("ascii");
+	return limitedTerminal ? ">" : "❯";
+}
+
 function removeSoftwareCursor(line: string, cursorMarker = ""): string {
 	return line.replace(/\x1b\[7m([\s\S]*?)\x1b\[0m/g, (_match, cursor: string) => {
 		const replacement = `${cursorMarker}${cursor}`;
@@ -141,6 +153,7 @@ export class OpenTuiEditor extends CustomEditor {
 		if (width < 4) return this.renderBase(width);
 
 		const borderPaint = this.getBorder;
+		const promptSymbol = getPromptSymbol();
 		const isBash = this.getText().trimStart().startsWith("!");
 		// Leave room for the prompt and its following space; the input has no side borders.
 		const innerWidth = Math.max(0, width - 2);
@@ -157,7 +170,7 @@ export class OpenTuiEditor extends CustomEditor {
 				const bang = line.indexOf("!");
 				if (bang !== -1) line = line.slice(0, bang) + line.slice(bang + 1);
 			}
-			const prompt = i === 1 ? (isBash ? borderPaint("!") : ">") : " ";
+			const prompt = i === 1 ? (isBash ? borderPaint("!") : promptSymbol) : " ";
 			result.push(`${prompt} ${fillLine(line, innerWidth)}`);
 		}
 

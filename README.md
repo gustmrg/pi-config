@@ -4,7 +4,8 @@ This directory contains the portable parts of the Pi Coding Agent configuration 
 
 - `extensions/` - personal Pi extensions
 - `themes/` - custom Pi themes
-- `settings.json` - default model, thinking level, theme, and package list
+- `settings.json` - default model, thinking level, theme, and other preferences
+- `keybindings.json` - keyboard shortcuts
 - `models-store.json` - cached model catalog
 - `npm/` - package manifests for the configured Pi packages
 
@@ -14,7 +15,7 @@ Install the configuration on the current machine directly, or select Pi from the
 ./install.sh
 ```
 
-Personal extensions are tracked as source files under `extensions/`. Packages added with `pi install` must be represented in both the `packages` array in `settings.json` and the npm manifest/lockfile under `npm/`. The installer copies the tracked configuration files and resources into `${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}` rather than symlinking them, then runs `npm ci` to recreate package installs. Use `--skip-packages` to omit that step. npm may create its normal executable shims inside the generated `node_modules/` directory.
+Personal extensions are tracked as source files under `extensions/`. No npm extension packages are currently configured. Packages added with `pi install` must be represented in both the `packages` array in `settings.json` and the npm manifest/lockfile under `npm/`. The installer copies the tracked configuration files and resources into `${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}` rather than symlinking them, then runs `npm ci` to recreate package installs. Use `--skip-packages` to omit that step. npm may create its normal executable shims inside the generated `node_modules/` directory.
 
 To refresh this snapshot after running `pi install` or `pi remove`, copy `~/.pi/agent/settings.json` and `~/.pi/agent/npm/package.json` back into their matching paths here, review the settings, then regenerate a portable lockfile:
 
@@ -30,3 +31,5 @@ Machine-specific or sensitive Pi state is intentionally not tracked:
 - `sessions/` and `fff/` contain private, machine-local history and indexes.
 - `trust.json` contains absolute paths and must be recreated on each machine.
 - `npm/node_modules/` is generated and platform-specific; the installer recreates it from the lockfile.
+
+The installer backs up extension paths used by earlier versions of this configuration before copying the current layout.

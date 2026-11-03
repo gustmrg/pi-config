@@ -1,8 +1,4 @@
 {
   "name": "pi-extensions",
-  "private": true,
-  "dependencies": {
-    "@ff-labs/pi-fff": "^0.10.5",
-    "pi-mcp-adapter": "^2.27.0"
-  }
+  "private": true
 }

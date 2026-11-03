@@ -101,9 +101,15 @@ if [ -L "$TARGET_DIR" ] || { [ -e "$TARGET_DIR" ] && [ ! -d "$TARGET_DIR" ]; }; 
 fi
 mkdir -p "$TARGET_DIR"
 
+# Retire paths used by earlier versions of this configuration.
+for legacy in answer.ts editor.ts effort.ts footer.ts header.ts theme.ts answer thinking; do
+    backup_path "$TARGET_DIR/extensions/$legacy"
+done
+
 copy_directory "$SCRIPT_DIR/extensions" "$TARGET_DIR/extensions"
 copy_directory "$SCRIPT_DIR/themes" "$TARGET_DIR/themes"
 copy_file "$SCRIPT_DIR/settings.json" "$TARGET_DIR/settings.json"
+copy_file "$SCRIPT_DIR/keybindings.json" "$TARGET_DIR/keybindings.json"
 copy_file "$SCRIPT_DIR/models-store.json" "$TARGET_DIR/models-store.json"
 copy_file "$SCRIPT_DIR/npm/package.json" "$TARGET_DIR/npm/package.json"
 copy_file "$SCRIPT_DIR/npm/package-lock.json" "$TARGET_DIR/npm/package-lock.json"
