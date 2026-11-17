@@ -45,6 +45,27 @@ backup_path() {
     printf 'Backed up %s to %s\n' "$target" "$backup_target"
 }
 
+# Backs up a file in place, keeping the original at its target, so a merge
+# can be retried after inspecting the backup.
+backup_path_copy() {
+    local target="$1"
+    local relative backup_target
+
+    if [ ! -f "$target" ]; then
+        return
+    fi
+
+    relative="${target#$HOME/}"
+    if [ "$relative" = "$target" ]; then
+        relative="absolute${target}"
+    fi
+
+    backup_target="$BACKUP_DIR/$relative"
+    mkdir -p "$(dirname "$backup_target")"
+    cp -p "$target" "$backup_target"
+    printf 'Backed up %s to %s\n' "$target" "$backup_target"
+}
+
 copy_file() {
     local source="$1"
     local destination="$2"
@@ -79,6 +100,60 @@ copy_directory() {
     printf 'Copied %s\n' "$destination"
 }
 
+# Fills in keys missing from an existing local settings.json with the repo's
+# values. Local values always win on conflict (deep merge, local applied last).
+merge_pi_settings() {
+    local source="$1"
+    local destination="$2"
+    local tmp
+
+    if ! command -v jq >/dev/null 2>&1; then
+        printf 'jq not found; %s kept as is (install jq and re-run to merge repo keys)\n' "$destination" >&2
+        return
+    fi
+
+    tmp=$(mktemp)
+    if ! jq -s '.[0] * .[1]' "$source" "$destination" > "$tmp"; then
+        rm -f "$tmp"
+        printf '%s -> could not be parsed as JSON; kept as is\n' "$destination" >&2
+        return
+    fi
+
+    if [ "$(jq -S . "$tmp")" = "$(jq -S . "$destination")" ]; then
+        printf 'Unchanged %s (already has all repo keys)\n' "$destination"
+        rm -f "$tmp"
+        return
+    fi
+
+    backup_path_copy "$destination"
+    cat "$tmp" > "$destination"
+    rm -f "$tmp"
+    printf 'Merged %s -> missing repo keys added, local values kept\n' "$destination"
+}
+
+# Pi rewrites settings.json itself (/model, /thinking, theme), so it is always
+# a local copy, never a symlink, regardless of install mode. New machines are
+# seeded from the repo; existing files only gain keys they are missing.
+seed_pi_settings() {
+    local source="$SCRIPT_DIR/settings.json"
+    local destination="$TARGET_DIR/settings.json"
+
+    if [ ! -f "$source" ]; then
+        printf 'Missing Pi settings file: %s\n' "$source" >&2
+        exit 1
+    fi
+
+    if [ -L "$destination" ]; then
+        backup_path "$destination"
+        cp -fL "$source" "$destination"
+        printf 'Seeded %s\n' "$destination"
+    elif [ ! -f "$destination" ]; then
+        copy_file "$source" "$destination"
+    else
+        merge_pi_settings "$source" "$destination"
+    fi
+}
+
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --skip-packages) INSTALL_PACKAGES=false ;;
@@ -108,9 +183,10 @@ done
 
 copy_directory "$SCRIPT_DIR/extensions" "$TARGET_DIR/extensions"
 copy_directory "$SCRIPT_DIR/themes" "$TARGET_DIR/themes"
-copy_file "$SCRIPT_DIR/settings.json" "$TARGET_DIR/settings.json"
+seed_pi_settings
 copy_file "$SCRIPT_DIR/keybindings.json" "$TARGET_DIR/keybindings.json"
-copy_file "$SCRIPT_DIR/models-store.json" "$TARGET_DIR/models-store.json"
+# models-store.json is Pi's own model-catalog cache, rewritten by pi on every
+# catalog refresh; it is intentionally not tracked or installed.
 copy_file "$SCRIPT_DIR/npm/package.json" "$TARGET_DIR/npm/package.json"
 copy_file "$SCRIPT_DIR/npm/package-lock.json" "$TARGET_DIR/npm/package-lock.json"
 copy_file "$SCRIPT_DIR/npm/.gitignore" "$TARGET_DIR/npm/.gitignore"
